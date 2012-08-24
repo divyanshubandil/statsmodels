@@ -8,8 +8,9 @@ import numpy as np
 
 from statsmodels.miscmodels.nonlinls import NonLinearModel
 from statsmodels.tools.decorators import cache_readonly
-from statsmodels.regression.linear_model import RLMResults
-from statsmodels.robust.norms as norms
+from statsmodels.robust.robust_linear_model import RLMResults
+#import statsmodels.robust.norms as norms
+import statsmodels.miscmodels.norms as norms
 
 from direction import Step
 
@@ -37,9 +38,11 @@ class RNLM(NonLinearModel):
     The algorithm takes care of multivariate data
 
     '''
-    def __init__(self, endog=None, exog=None, M=norms.HuberT()):
+    def __init__(self, endog=None, exog=None, M=None):#=norms.HuberT(1.345)):
         self.endog = endog
         self.exog = exog
+        self.M = M
+        self.params_iter = None
 
     def predict(self, params, exog=None):
         if exog is None:
@@ -49,30 +52,32 @@ class RNLM(NonLinearModel):
     def geterrors(self, params, weights=None):
         return (self.endog - self.predict(params, self.exog))
 
-    def fit(self,maxiter=50):
-        old_params = self.startvalue(params)
+    def fit(self,maxiter=5):
+        old_params = self.start_value()#self.startvalue(params)
         params = None
         for iteration in range(maxiter):
-            params = predict_params(old_params)
-            if (check_convergence(params)):
+            params = self.predict_params(old_params)
+            if (self._check_convergence(params)):
                 break
             self._store_params(params)
+#            print params
             old_params = params
 
         if iteration is maxiter:
             print 'maximum iterations completed.convergence not achieved'
 
-    def start_value(self):
-        from statsmodels.miscmodels.nonlinls import NonLinearLS
-        start = NonlinearLS(self.endog,self.exog).fit()
-        return start.params    
+#    def start_value(self):
+#        from statsmodels.miscmodels.nonlinls import NonLinearLS
+#        start = NonlinearLS(self.endog,self.exog).fit()
+#        return start.params    
 
-    def _check_convergence(params):
-        pass
+    def _check_convergence(self,params):
+        return False
 
     def predict_params(self,old_params):
-        return old_params + Step(self.geterrors,
-                                     self.getjacobian(old_params),self.M)
+        x = np.asarray(Step(self.geterrors(old_params),
+            self.getjacobian(old_params),self.M).step(),np.float64)
+        return old_params + x
 
     def jac_predict(self, params):
         '''jacobian of prediction function using complex step derivative
@@ -128,8 +133,11 @@ class RNLM(NonLinearModel):
 
         self._store_params(params)
         try:
-            jac_func = -self.whiten(self.jacobian(params))
+#            jac_func = -self.whiten(self.jacobian(params))
+            jac_func = self.whiten(self.jacobian(params))
         except NotImplementedError:
             jac_func = self.approx_jac_predict(params)
         return jac_func
 
+    def whiten(self,X):
+        return X
